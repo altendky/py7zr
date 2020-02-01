@@ -39,7 +39,8 @@ from py7zr.archiveinfo import Folder, Header, SignatureHeader
 from py7zr.compression import SevenZipCompressor, Worker, get_methods_names
 from py7zr.exceptions import Bad7zFile
 from py7zr.helpers import ArchiveTimestamp, calculate_crc32, filetime_to_dt
-from py7zr.properties import MAGIC_7Z, ArchivePassword, Configuration
+from py7zr.properties import (MAGIC_7Z, ArchivePassword, Configuration, PRESET_DEFAULT, FILTER_LZMA2,
+                              FILTER_CRYPTO_AES256_SHA256)
 
 if sys.version_info < (3, 6):
     import pathlib2 as pathlib
@@ -252,7 +253,7 @@ class SevenZipFile:
     """The SevenZipFile Class provides an interface to 7z archives."""
 
     def __init__(self, file: Union[BinaryIO, str, pathlib.Path], mode: str = 'r',
-                 *, filters: Optional[str] = None, password: Optional[str] = None) -> None:
+                 *, filters: Optional[List[Dict[str, int]]] = None, password: Optional[str] = None) -> None:
         if mode not in ('r', 'w', 'x', 'a'):
             raise ValueError("ZipFile requires mode 'r', 'w', 'x', or 'a'")
         ArchivePassword(password)
@@ -299,8 +300,10 @@ class SevenZipFile:
                 self._real_get_contents(self.fp)
                 self._reset_worker()
             elif mode in 'w':
-                # FIXME: check filters here
-                self.folder = self._create_folder(filters)
+                if password is not None and filters is None:
+                    filters = [{'id': FILTER_LZMA2, 'preset': PRESET_DEFAULT},
+                               {'id': FILTER_CRYPTO_AES256_SHA256, 'password': password}]
+                self.folder = self._create_folder(filters=filters)
                 self.files = ArchiveFileList()
                 self._prepare_write()
             elif mode in 'x':
@@ -314,7 +317,7 @@ class SevenZipFile:
             raise e
         self.encoded_header_mode = False
 
-    def _create_folder(self, filters):
+    def _create_folder(self, *, filters=None):
         folder = Folder()
         folder.compressor = SevenZipCompressor(filters)
         folder.coders = folder.compressor.coders

@@ -23,6 +23,9 @@ from py7zr.exceptions import (Bad7zFile, DecompressionError,
                               UnsupportedCompressionMethodError)
 from py7zr.py7zr import (ArchiveInfo, FileInfo, SevenZipFile, is_7zfile,
                          pack_7zarchive, unpack_7zarchive)
+from py7zr.properties import (FILTER_LZMA1, FILTER_LZMA2, FILTER_DELTA, FILTER_ARM, FILTER_ARMTHUMB, FILTER_IA64,
+                              FILTER_POWERPC, FILTER_SPARC, FILTER_X86, CHECK_CRC32, CHECK_CRC64, CHECK_SHA256,
+                              CHECK_NONE, PRESET_EXTREME, PRESET_DEFAULT, FILTER_CRYPTO_AES256_SHA256)
 
 __copyright__ = 'Copyright (C) 2019 Hiroshi Miura'
 
@@ -34,4 +37,8 @@ except DistributionNotFound:
 
 __all__ = ['__version__', 'ArchiveInfo', 'FileInfo', 'SevenZipFile', 'is_7zfile',
            'UnsupportedCompressionMethodError', 'Bad7zFile', 'DecompressionError',
-           'pack_7zarchive', 'unpack_7zarchive']
+           'pack_7zarchive', 'unpack_7zarchive',
+           'FILTER_LZMA1', 'FILTER_LZMA2', 'FILTER_DELTA', 'FILTER_X86', 'FILTER_ARM',
+           'FILTER_SPARC', 'FILTER_POWERPC', 'FILTER_IA64', 'FILTER_ARMTHUMB',
+           'CHECK_SHA256', 'CHECK_CRC64', 'CHECK_CRC32', 'CHECK_NONE',
+           'FILTER_CRYPTO_AES256_SHA256']

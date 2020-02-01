@@ -544,7 +544,7 @@ def test_calculate_key(password: str, cycle: int, salt: bytes, expected: bytes):
 
 
 @pytest.mark.unit
-def test_aescipher():
+def test_aes_cipher():
     key = b'e\x11\xf1Pz<*\x98*\xe6\xde\xf4\xf6X\x18\xedl\xf2Be\x1a\xca\x19\xd1\\\xeb\xc6\xa6z\xe2\x89\x1d'
     iv = b'|&\xae\x94do\x8a4\x00\x00\x00\x00\x00\x00\x00\x00'
     indata = b"T\x9f^\xb5\xbf\xdc\x08/\xfe<\xe6i'\x84A^\x83\xdc\xdd5\xe9\xd5\xd0b\xa9\x7fH$\x11\x82\x8d" \
@@ -557,7 +557,56 @@ def test_aescipher():
 
 
 @pytest.mark.unit
-def test_aesdecrypt(monkeypatch):
+def test_aes_encrypt(monkeypatch):
+
+    class Passthrough:
+        def __init__(self):
+            self.coders = [{'method': b'\x00', 'properties': b''}]
+
+        def compress(self, data):
+            return data
+
+        def flush(self):
+            return b''
+
+    def lzmamock(self):
+        return Passthrough()
+
+    monkeypatch.setattr(py7zr.compression.AESCompressor, "_create_lzma_compressor", lzmamock)
+
+    compressor = py7zr.compression.AESCompressor('secret')
+    assert compressor.method == py7zr.properties.CompressionMethod.CRYPT_AES256_SHA256
+    assert len(compressor.properties) == 2 + 16
+
+
+@pytest.mark.unit
+def test_aes_encrypt_data(monkeypatch):
+
+    class Passthrough:
+        def __init__(self):
+            self.coders = [{'method': b'\x00', 'properties': b''}]
+
+        def compress(self, data):
+            return data
+
+        def flush(self):
+            return b''
+
+    def lzmamock(self):
+        return Passthrough()
+
+    monkeypatch.setattr(py7zr.compression.AESCompressor, "_create_lzma_compressor", lzmamock)
+
+    plain_data = b"\x00*\x1a\t'd\x19\xb08s\xca\x8b\x13 \xaf:\x1b\x8d\x97\xf8|#M\xe9\xe1W\xd4\xe4\x97BB\xd2"
+    password = 'secret'
+    compressor = py7zr.compression.AESCompressor(password)
+    outdata = compressor.compress(plain_data)
+    outdata += compressor.flush(b'')
+    assert len(outdata) == len(plain_data)
+
+
+@pytest.mark.unit
+def test_aes_decrypt(monkeypatch):
 
     class Passthrough:
         def __init__(self):
@@ -575,7 +624,7 @@ def test_aesdecrypt(monkeypatch):
     def lzmamock(self, coders):
         return Passthrough()
 
-    monkeypatch.setattr(py7zr.compression.AESDecompressor, "_set_lzma_decompressor", lzmamock)
+    monkeypatch.setattr(py7zr.compression.AESDecompressor, "_create_lzma_decompressor", lzmamock)
 
     properties = b'S\x07|&\xae\x94do\x8a4'
     password = 'secret'
@@ -597,3 +646,26 @@ def test_archive_password():
     assert b.get() == 'secret'
     b.set('password')
     assert b.get() == 'password'
+
+
+@pytest.mark.unit
+def test_simple_compress_and_decompress():
+    sevenzip_compressor = py7zr.compression.SevenZipCompressor()
+    lzc = sevenzip_compressor.compressor
+    out1 = lzc.compress(b"Some data\n")
+    out2 = lzc.compress(b"Another piece of data\n")
+    out3 = lzc.compress(b"Even more data\n")
+    out4 = lzc.flush()
+    result = b"".join([out1, out2, out3, out4])
+    size = len(result)
+    #
+    filters = sevenzip_compressor.filters
+    decompressor = lzma.LZMADecompressor(format=lzma.FORMAT_RAW, filters=filters)
+    out5 = decompressor.decompress(result)
+    assert out5 == b'Some data\nAnother piece of data\nEven more data\n'
+    #
+    coders = sevenzip_compressor.coders
+    crc = py7zr.helpers.calculate_crc32(result)
+    decompressor = py7zr.compression.SevenZipDecompressor(coders, size, crc)
+    out6 = decompressor.decompress(result)
+    assert out6 == b'Some data\nAnother piece of data\nEven more data\n'

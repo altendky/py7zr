@@ -414,3 +414,4 @@ def test_py7zr_extract_and_reset_iteration(tmp_path):
     assert tmp_path.joinpath('scripts/py7zr').exists()
     assert tmp_path.joinpath('setup.cfg').exists()
     assert tmp_path.joinpath('setup.py').exists()
+

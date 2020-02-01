@@ -33,7 +33,7 @@ from operator import and_, or_
 from struct import pack, unpack
 from typing import Any, BinaryIO, Dict, List, Optional, Tuple
 
-from py7zr.compression import SevenZipCompressor, SevenZipDecompressor
+from py7zr.compression import Bond, SevenZipCompressor, SevenZipDecompressor
 from py7zr.exceptions import Bad7zFile, UnsupportedCompressionMethodError
 from py7zr.helpers import ArchiveTimestamp, calculate_crc32
 from py7zr.properties import (MAGIC_7Z, CompressionMethod, Configuration,
@@ -300,7 +300,7 @@ class Folder:
     def __init__(self) -> None:
         self.unpacksizes = None  # type: Optional[List[int]]
         self.coders = []  # type: List[Dict[str, Any]]
-        self.bindpairs = []  # type: List[Any]
+        self.bindpairs = []  # type: List[Bond]
         self.packed_indices = []  # type: List[int]
         # calculated values
         self.totalin = 0  # type: int
@@ -342,7 +342,7 @@ class Folder:
             self.coders.append(c)
         num_bindpairs = self.totalout - 1
         for i in range(num_bindpairs):
-            self.bindpairs.append((read_uint64(file), read_uint64(file),))
+            self.bindpairs.append(Bond(read_uint64(file), read_uint64(file),))
         num_packedstreams = self.totalin - num_bindpairs
         if num_packedstreams == 1:
             for i in range(self.totalin):
@@ -356,6 +356,8 @@ class Folder:
         num_coders = len(self.coders)
         assert num_coders > 0
         write_uint64(file, num_coders)
+        totalin = 0
+        totalout = 0
         for i, c in enumerate(self.coders):
             id = c['method']  # type: bytes
             id_size = len(id) & 0x0f
@@ -366,17 +368,26 @@ class Folder:
             write_bytes(file, id[:id_size])
             if not self.is_simple(c):
                 write_uint64(file, c['numinstreams'])
+                totalin += c['numinstreams']
                 assert c['numoutstreams'] == 1
                 write_uint64(file, c['numoutstreams'])
+                totalout += 1
+            else:
+                totalin += 1
+                totalout += 1
             if c['properties'] is not None:
                 write_uint64(file, len(c['properties']))
                 write_bytes(file, c['properties'])
-        num_bindpairs = self.totalout - 1
+        num_bindpairs = totalout - 1
+        self.totalout = totalout
+        self.bindpairs = []
+        for i in range(num_bindpairs):
+            self.bindpairs.append(Bond(i + 1, i))
         assert len(self.bindpairs) == num_bindpairs
-        num_packedstreams = self.totalin - num_bindpairs
-        for bp in self.bindpairs:
-            write_uint64(file, bp[0])
-            write_uint64(file, bp[1])
+        num_packedstreams = totalin - num_bindpairs
+        for bond in self.bindpairs:
+            write_uint64(file, bond.incoder)
+            write_uint64(file, bond.outcoder)
         if num_packedstreams > 1:
             for pi in self.packed_indices:
                 write_uint64(file, pi)
@@ -418,14 +429,14 @@ class Folder:
         raise TypeError('not found')
 
     def _find_in_bin_pair(self, index: int) -> int:
-        for idx, (a, b) in enumerate(self.bindpairs):
-            if a == index:
+        for idx, bond in enumerate(self.bindpairs):
+            if bond.incoder == index:
                 return idx
         return -1
 
     def _find_out_bin_pair(self, index: int) -> int:
-        for idx, (a, b) in enumerate(self.bindpairs):
-            if b == index:
+        for idx, bond in enumerate(self.bindpairs):
+            if bond.outcoder == index:
                 return idx
         return -1
 

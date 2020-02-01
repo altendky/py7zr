@@ -22,29 +22,6 @@ from . import ltime
 testdata_path = os.path.join(os.path.dirname(__file__), 'data')
 
 
-@pytest.mark.unit
-def test_simple_compress_and_decompress():
-    sevenzip_compressor = py7zr.compression.SevenZipCompressor()
-    lzc = sevenzip_compressor.compressor
-    out1 = lzc.compress(b"Some data\n")
-    out2 = lzc.compress(b"Another piece of data\n")
-    out3 = lzc.compress(b"Even more data\n")
-    out4 = lzc.flush()
-    result = b"".join([out1, out2, out3, out4])
-    size = len(result)
-    #
-    filters = sevenzip_compressor.filters
-    decompressor = lzma.LZMADecompressor(format=lzma.FORMAT_RAW, filters=filters)
-    out5 = decompressor.decompress(result)
-    assert out5 == b'Some data\nAnother piece of data\nEven more data\n'
-    #
-    coders = sevenzip_compressor.coders
-    crc = py7zr.helpers.calculate_crc32(result)
-    decompressor = py7zr.compression.SevenZipDecompressor(coders, size, crc)
-    out6 = decompressor.decompress(result)
-    assert out6 == b'Some data\nAnother piece of data\nEven more data\n'
-
-
 @pytest.mark.basic
 @pytest.mark.skipif(sys.version_info < (3, 6), reason="requires python3.6 or higher")
 def test_compress_single_encoded_header(capsys, tmp_path):
@@ -290,7 +267,7 @@ def test_register_archive_format(tmp_path):
 @pytest.mark.api
 @pytest.mark.skipif(sys.version_info < (3, 6), reason="requires python3.6 or higher")
 def test_compress_with_simple_filter(tmp_path):
-    my_filters = [{"id": lzma.FILTER_LZMA2, "preset": lzma.PRESET_DEFAULT}, ]
+    my_filters = [{"id": py7zr.FILTER_LZMA2, "preset": py7zr.PRESET_DEFAULT}, ]
     target = tmp_path.joinpath('target.7z')
     archive = py7zr.SevenZipFile(target, 'w', filters=my_filters)
     archive.writeall(os.path.join(testdata_path, "src"), "src")
@@ -301,8 +278,8 @@ def test_compress_with_simple_filter(tmp_path):
 @pytest.mark.skipif(sys.version_info < (3, 6), reason="requires python3.6 or higher")
 def test_compress_with_custom_filter(tmp_path):
     my_filters = [
-        {"id": lzma.FILTER_DELTA, "dist": 5},
-        {"id": lzma.FILTER_LZMA2, "preset": 7 | lzma.PRESET_EXTREME},
+        {"id": py7zr.FILTER_DELTA, "dist": 5},
+        {"id": py7zr.FILTER_LZMA2, "preset": 7 | py7zr.PRESET_EXTREME},
     ]
     target = tmp_path.joinpath('target.7z')
     archive = py7zr.SevenZipFile(target, 'w', filters=my_filters)
@@ -453,3 +430,47 @@ def test_compress_directories(tmp_path):
     reader = py7zr.SevenZipFile(target, 'r')
     reader.extractall(path=tmp_path.joinpath('tgt1'))
     reader.close()
+
+
+@pytest.mark.basic
+@pytest.mark.skipif(sys.version_info < (3, 6), reason="requires python3.6 or higher")
+def test_encrypt_file_0(tmp_path):
+    tmp_path.joinpath('src').mkdir()
+    tmp_path.joinpath('tgt').mkdir()
+    py7zr.unpack_7zarchive(os.path.join(testdata_path, 'test_1.7z'), path=tmp_path.joinpath('src'))
+    target = tmp_path.joinpath('target.7z')
+    os.chdir(tmp_path.joinpath('src'))
+    archive = py7zr.SevenZipFile(target, 'w', password='secret')
+    archive.set_encoded_header_mode(False)
+    archive.writeall('.')
+    archive.close()
+    reader = py7zr.SevenZipFile(target, 'r', password='secret')
+    reader.extractall(path=tmp_path.joinpath('tgt1'))
+    reader.close()
+
+
+@pytest.mark.basic
+def test_compress_multi_filter(tmp_path):
+    my_filters = [
+        {"id": py7zr.FILTER_DELTA, "dist": 5},
+        {"id": py7zr.FILTER_LZMA2, "preset": 7 | py7zr.PRESET_EXTREME},
+        ]
+    target = tmp_path.joinpath('target.7z')
+    archive = py7zr.SevenZipFile(target, 'w', filters=my_filters)
+    archive.writeall(os.path.join(testdata_path, "src"), "src")
+    assert archive.files is not None
+    assert len(archive.files) == 2
+    for f in archive.files:
+        assert f.filename in ('src', os.path.join('src', 'bra.txt'))
+
+
+@pytest.mark.api
+def test_encrypt_with_multi_filter(tmp_path):
+    enc_filters = [
+        {"id": py7zr.FILTER_LZMA2, "preset": py7zr.PRESET_DEFAULT},
+        {"id": py7zr.FILTER_CRYPTO_AES256_SHA256, "password": 'secret'},
+    ]
+    target = tmp_path.joinpath('target.7z')
+    archive = py7zr.SevenZipFile(target, 'w', filters=enc_filters)
+    archive.writeall(os.path.join(testdata_path, "src"), "src")
+    archive.close()
